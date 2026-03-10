@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const STORAGE_KEY = "finance_dashboard_v6";
+const STORAGE_KEY = "finance_dashboard_v7";
 
 const DEFAULT_CATEGORIES = [
   { name: "Housing",       icon: "🏠" },
@@ -15,54 +15,24 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const defaultData = {
-  savingsGoal: 20000,
+  savingsGoal: 50000,
   categories: DEFAULT_CATEGORIES,
-  transactions: [
-    { id: 1, name: "Monthly Salary", amount: 150000, type: "income",  date: "2026-03-01", category: "Income" },
-    { id: 2, name: "Rent",           amount: 35000,  type: "expense", date: "2026-03-01", category: "Housing" },
-    { id: 3, name: "Groceries",      amount: 8000,   type: "expense", date: "2026-02-28", category: "Food" },
-    { id: 4, name: "Netflix",        amount: 1100,   type: "expense", date: "2026-02-27", category: "Entertainment" },
-    { id: 5, name: "Fuel",           amount: 3500,   type: "expense", date: "2026-02-25", category: "Transport" },
-  ],
-  upcomingPayments: [
-    { id: 1, name: "Electricity Bill", amount: 4500, dueDate: "2026-03-05", category: "Utilities", paid: false },
-    { id: 2, name: "Internet",         amount: 2500, dueDate: "2026-03-08", category: "Utilities", paid: false },
-    { id: 3, name: "Car Insurance",    amount: 6000, dueDate: "2026-03-15", category: "Insurance", paid: false },
-    { id: 4, name: "Gym Membership",   amount: 3000, dueDate: "2026-03-20", category: "Health",    paid: false },
-    { id: 5, name: "Phone Bill",       amount: 1500, dueDate: "2026-03-22", category: "Utilities", paid: false },
-  ],
-  savings: 45000,
-  lendings: [
-    { id: 1, person: "Ahmed Bhai", amount: 10000, type: "lent",     date: "2026-02-10", note: "Car repair",        settled: false },
-    { id: 2, person: "Sara",       amount: 5000,  type: "borrowed", date: "2026-02-20", note: "Emergency grocery", settled: false },
-    { id: 3, person: "Usman",      amount: 15000, type: "lent",     date: "2026-01-15", note: "House renovation",  settled: true  },
-  ],
-  kameetis: [
-    {
-      id: 1, name: "Gali Wali Kameeti", monthlyAmount: 5000, totalMonths: 10,
-      startDate: "2026-01-01", myTurn: 6,
-      monthlyPayments: [
-        { month: 1, paid: true,  date: "2026-01-05" },
-        { month: 2, paid: true,  date: "2026-02-04" },
-        { month: 3, paid: false, date: null },
-      ],
-      received: [],
-    },
-    {
-      id: 2, name: "Office Kameeti", monthlyAmount: 10000, totalMonths: 12,
-      startDate: "2025-10-01", myTurn: 3,
-      monthlyPayments: [
-        { month: 1, paid: true,  date: "2025-10-05" },
-        { month: 2, paid: true,  date: "2025-11-03" },
-        { month: 3, paid: true,  date: "2025-12-04" },
-        { month: 4, paid: true,  date: "2026-01-06" },
-        { month: 5, paid: true,  date: "2026-02-05" },
-        { month: 6, paid: false, date: null },
-      ],
-      received: [{ month: 3, amount: 120000, date: "2025-12-04", stillOwes: true }],
-    },
-  ],
+  transactions: [],
+  upcomingPayments: [],
+  savings: 0,
+  lendings: [],
+  kameetis: [],
 };
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
 
 function load() {
   try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : defaultData; }
@@ -215,6 +185,7 @@ function KameetiCard({ k, onMarkPaid, onMarkReceived, onToggleOwed, onDelete }) 
 
 // ── Main App ────────────────────────────────────────────────
 export default function App() {
+  const isMobile = useIsMobile();
   const [data, setData]         = useState(load);
   const [tab, setTab]           = useState("overview");
   const [modal, setModal]       = useState(null);
@@ -226,6 +197,11 @@ export default function App() {
   const [newLend, setNewLend] = useState({ person: "", amount: "", type: "lent", date: new Date().toISOString().split("T")[0], note: "" });
   const [newK,    setNewK]    = useState({ name: "", monthlyAmount: "", totalMonths: "", startDate: new Date().toISOString().split("T")[0], myTurn: "" });
   const [newCat,  setNewCat]  = useState({ name: "", icon: "" });
+  const [exportOpts, setExportOpts] = useState({
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0],
+    to:   new Date().toISOString().split("T")[0],
+    sections: { transactions: true, payments: true, lendings: true, kameeti: true, savings: true },
+  });
   const [profile, setProfile] = useState(() => {
     try { const p = localStorage.getItem("mera_paisa_profile"); return p ? JSON.parse(p) : { name: "", currency: "PKR", monthlyIncome: "" }; } catch { return { name: "", currency: "PKR", monthlyIncome: "" }; }
   });
@@ -259,6 +235,140 @@ export default function App() {
   const unsettled     = (data.lendings||[]).filter(l => !l.settled).length;
   const kameetis      = data.kameetis || [];
   const kDue          = kameetis.filter(k => k.monthlyPayments.some(m => !m.paid)).length;
+
+  const generateReport = () => {
+    const { from, to, sections } = exportOpts;
+    const fromD = new Date(from); fromD.setHours(0,0,0,0);
+    const toD   = new Date(to);   toD.setHours(23,59,59,999);
+    const inRange = d => { const x = new Date(d); return x >= fromD && x <= toD; };
+    const fmtDate = d => new Date(d).toLocaleDateString("en-PK", { day:"numeric", month:"short", year:"numeric" });
+    const currency = profile.currency || "PKR";
+    const sign = currency === "PKR" ? "₨" : currency === "USD" ? "$" : currency === "GBP" ? "£" : currency === "AED" ? "AED " : "SAR ";
+
+    let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Mera Paisa Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f9fafb; color: #111827; padding: 32px; }
+  .header { background: #111827; color: white; border-radius: 16px; padding: 28px 32px; margin-bottom: 24px; }
+  .header h1 { font-size: 24px; font-weight: 800; color: #d4f04e; margin-bottom: 4px; }
+  .header p { font-size: 13px; color: #9ca3af; }
+  .section { background: white; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 20px; overflow: hidden; }
+  .section-title { padding: 16px 20px; font-weight: 700; font-size: 15px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+  .badge { background: #d4f04e; color: #111827; border-radius: 6px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 20px; text-align: left; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid #f9fafb; }
+  tr:last-child td { border-bottom: none; }
+  .income { color: #16a34a; font-weight: 700; }
+  .expense { color: #374151; font-weight: 700; }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 20px; }
+  .stat { background: #f9fafb; border-radius: 10px; padding: 14px; border: 1px solid #e5e7eb; }
+  .stat-label { font-size: 11px; color: #9ca3af; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+  .stat-val { font-size: 20px; font-weight: 800; color: #111827; }
+  .empty { padding: 24px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
+  @media print { body { padding: 0; background: white; } .no-print { display: none; } }
+</style></head><body>`;
+
+    html += `<div class="header">
+      <h1>💸 Mera Paisa</h1>
+      <p>Financial Report${profile.name ? " — " + profile.name : ""} &nbsp;·&nbsp; ${fmtDate(from)} to ${fmtDate(to)}</p>
+    </div>`;
+
+    // Summary
+    const txInRange = data.transactions.filter(t => inRange(t.date));
+    const income   = txInRange.filter(t => t.type==="income").reduce((s,t)=>s+t.amount,0);
+    const expenses = txInRange.filter(t => t.type==="expense").reduce((s,t)=>s+t.amount,0);
+    html += `<div class="section"><div class="section-title">Summary <span class="badge">${fmtDate(from)} – ${fmtDate(to)}</span></div>
+      <div class="summary-grid">
+        <div class="stat"><div class="stat-label">Income</div><div class="stat-val" style="color:#16a34a">${sign}${income.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">Expenses</div><div class="stat-val">${sign}${expenses.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">Net</div><div class="stat-val" style="color:${income-expenses>=0?"#16a34a":"#ef4444"}">${sign}${Math.abs(income-expenses).toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">Savings</div><div class="stat-val">${sign}${data.savings.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">You're Owed</div><div class="stat-val">${sign}${(data.lendings||[]).filter(l=>l.type==="lent"&&!l.settled).reduce((s,l)=>s+l.amount,0).toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">You Owe</div><div class="stat-val">${sign}${(data.lendings||[]).filter(l=>l.type==="borrowed"&&!l.settled).reduce((s,l)=>s+l.amount,0).toLocaleString()}</div></div>
+      </div></div>`;
+
+    // Transactions
+    if (sections.transactions) {
+      const rows = txInRange;
+      html += `<div class="section"><div class="section-title">Transactions <span class="badge">${rows.length}</span></div>`;
+      if (!rows.length) { html += `<div class="empty">No transactions in this period</div>`; }
+      else {
+        html += `<table><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th></tr>`;
+        rows.sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(t => {
+          html += `<tr><td>${fmtDate(t.date)}</td><td>${t.name}</td><td>${t.category}</td><td style="text-align:right" class="${t.type}">${t.type==="income"?"+":"−"}${sign}${t.amount.toLocaleString()}</td></tr>`;
+        });
+        html += `</table>`;
+      }
+      html += `</div>`;
+    }
+
+    // Payments
+    if (sections.payments) {
+      const rows = data.upcomingPayments.filter(p => inRange(p.dueDate));
+      html += `<div class="section"><div class="section-title">Payment Reminders <span class="badge">${rows.length}</span></div>`;
+      if (!rows.length) { html += `<div class="empty">No payments in this period</div>`; }
+      else {
+        html += `<table><tr><th>Due Date</th><th>Name</th><th>Category</th><th>Status</th><th style="text-align:right">Amount</th></tr>`;
+        rows.forEach(p => {
+          html += `<tr><td>${fmtDate(p.dueDate)}</td><td>${p.name}</td><td>${p.category}</td><td>${p.paid?"✓ Paid":"Unpaid"}</td><td style="text-align:right;font-weight:700">${sign}${p.amount.toLocaleString()}</td></tr>`;
+        });
+        html += `</table>`;
+      }
+      html += `</div>`;
+    }
+
+    // Lendings
+    if (sections.lendings) {
+      const rows = (data.lendings||[]).filter(l => inRange(l.date));
+      html += `<div class="section"><div class="section-title">Borrow & Lend <span class="badge">${rows.length}</span></div>`;
+      if (!rows.length) { html += `<div class="empty">No borrow/lend entries in this period</div>`; }
+      else {
+        html += `<table><tr><th>Date</th><th>Person</th><th>Type</th><th>Note</th><th>Status</th><th style="text-align:right">Amount</th></tr>`;
+        rows.forEach(l => {
+          html += `<tr><td>${fmtDate(l.date)}</td><td>${l.person}</td><td>${l.type==="lent"?"I Lent":"I Borrowed"}</td><td>${l.note||"—"}</td><td>${l.settled?"Settled":"Pending"}</td><td style="text-align:right;font-weight:700">${sign}${l.amount.toLocaleString()}</td></tr>`;
+        });
+        html += `</table>`;
+      }
+      html += `</div>`;
+    }
+
+    // Kameeti
+    if (sections.kameeti && (data.kameetis||[]).length) {
+      html += `<div class="section"><div class="section-title">Kameeti Circles <span class="badge">${data.kameetis.length}</span></div>`;
+      html += `<table><tr><th>Name</th><th>Monthly</th><th>Total Months</th><th>Months Paid</th><th>Pool</th><th>Received</th></tr>`;
+      data.kameetis.forEach(k => {
+        const paid = k.monthlyPayments.filter(m=>m.paid).length;
+        const received = (k.received||[]).reduce((s,r)=>s+r.amount,0);
+        html += `<tr><td>${k.name}</td><td>${sign}${k.monthlyAmount.toLocaleString()}</td><td>${k.totalMonths}</td><td>${paid}/${k.totalMonths}</td><td>${sign}${(k.monthlyAmount*k.totalMonths).toLocaleString()}</td><td>${received>0?sign+received.toLocaleString():"Not yet"}</td></tr>`;
+      });
+      html += `</table></div>`;
+    }
+
+    // Savings
+    if (sections.savings) {
+      html += `<div class="section"><div class="section-title">Savings</div>
+        <div class="summary-grid">
+          <div class="stat"><div class="stat-label">Current Savings</div><div class="stat-val">${sign}${data.savings.toLocaleString()}</div></div>
+          <div class="stat"><div class="stat-label">Goal</div><div class="stat-val">${sign}${data.savingsGoal.toLocaleString()}</div></div>
+          <div class="stat"><div class="stat-label">Progress</div><div class="stat-val">${Math.min(100,(data.savings/data.savingsGoal*100)).toFixed(1)}%</div></div>
+        </div></div>`;
+    }
+
+    html += `<p style="text-align:center;color:#9ca3af;font-size:12px;margin-top:24px">Generated by Mera Paisa · ${new Date().toLocaleDateString("en-PK",{day:"numeric",month:"long",year:"numeric"})}</p>`;
+    html += `</body></html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+   a.download = "mera-paisa-report-" + from + "-to-" + to + ".html";
+    a.click();
+    URL.revokeObjectURL(url);
+    setModal(null);
+    notify("Report downloaded!");
+  };
 
   const notify = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -354,10 +464,10 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "0 20px 60px" }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: isMobile ? "0 14px 80px" : "0 20px 60px" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "24px 0 20px", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", padding: "16px 0 14px", flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 36, height: 36, background: "#d4f04e", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>💸</div>
             <div>
@@ -367,9 +477,15 @@ export default function App() {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setModal("tx")}      style={btn("#111827","#d4f04e")}>+ Transaction</button>
-            <button onClick={() => setModal("kameeti")} style={btn("#f3f4f6","#111827")}>+ Kameeti</button>
-            <button onClick={() => setModal("lending")} style={btn("#f3f4f6","#111827")}>+ Borrow / Lend</button>
-            <button onClick={() => setModal("pay")}     style={btn("#f3f4f6","#111827")}>+ Reminder</button>
+            {!isMobile && <button onClick={() => setModal("kameeti")} style={btn("#f3f4f6","#111827")}>+ Kameeti</button>}
+            {!isMobile && <button onClick={() => setModal("lending")} style={btn("#f3f4f6","#111827")}>+ Borrow / Lend</button>}
+            {!isMobile && <button onClick={() => setModal("pay")}     style={btn("#f3f4f6","#111827")}>+ Reminder</button>}
+            {/* Export button */}
+            <button onClick={() => setModal("export")} title="Export Report"
+              style={{ ...btn("#f3f4f6","#374151"), padding:"0 12px", height:36, display:"flex", alignItems:"center", gap:6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              {!isMobile && "Export"}
+            </button>
             {/* divider */}
             <div style={{ width: 1, height: 24, background: "#e5e7eb", margin: "0 2px" }} />
             {/* Settings icon — gear SVG */}
@@ -397,8 +513,8 @@ export default function App() {
         {/* Balance strip */}
         <div style={{ background: "#111827", borderRadius: 16, padding: "24px 28px", marginBottom: 16 }}>
           <p style={{ color: "#6b7280", fontSize: 11, fontWeight: 600, margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "1px" }}>Current Balance</p>
-          <p style={{ color: "#fff", fontSize: 40, fontWeight: 700, margin: "0 0 20px", letterSpacing: "-1px", lineHeight: 1 }}>{balance < 0 && "−"}{fmt(balance)}</p>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+          <p style={{ color: "#fff", fontSize: isMobile ? 32 : 40, fontWeight: 700, margin: "0 0 16px", letterSpacing: "-1px", lineHeight: 1 }}>{balance < 0 && "−"}{fmt(balance)}</p>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr 1fr" : "repeat(6,auto)", gap: isMobile ? "10px 16px" : "0 24px" }}>
             {[
               { label: "Income",        val: fmt(totalIncome),                                     color: "#d4f04e" },
               { label: "Expenses",      val: fmt(totalExpenses),                                   color: "#e5e7eb" },
@@ -416,7 +532,7 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", marginBottom: 20, borderBottom: "1px solid #e5e7eb", overflowX: "auto" }}>
+        <div className="desktop-tabs" style={{ display: "flex", marginBottom: 20, borderBottom: "1px solid #e5e7eb", overflowX: "auto" }}>
           {tabs.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{ padding: "10px 14px", background: "none", border: "none", borderBottom: `2px solid ${tab===id?"#111827":"transparent"}`, cursor: "pointer", fontWeight: tab===id?700:500, fontSize: 13, fontFamily: "inherit", color: tab===id?"#111827":"#9ca3af", marginBottom: -1, whiteSpace: "nowrap" }}>
               {label}
@@ -428,7 +544,7 @@ export default function App() {
 
         {/* ── OVERVIEW ── */}
         {tab === "overview" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <div style={card}>
               <p style={{ margin: "0 0 16px", fontWeight: 700, fontSize: 14 }}>Spending Breakdown</p>
               {Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).map(([cat, amt]) => {
@@ -500,17 +616,25 @@ export default function App() {
               <p style={{ margin:0, fontWeight:700, fontSize:14 }}>All Transactions</p>
               <button onClick={()=>setModal("tx")} style={btn("#111827","#d4f04e")}>+ Add</button>
             </div>
+            {!data.transactions.length && (
+              <div style={{ textAlign:"center", padding:"40px 20px" }}>
+                <p style={{ fontSize:28, margin:"0 0 8px" }}>💸</p>
+                <p style={{ fontWeight:600, color:"#374151", margin:"0 0 4px" }}>No transactions yet</p>
+                <p style={{ color:"#9ca3af", fontSize:13, margin:"0 0 16px" }}>Tap + Add to record your first one</p>
+                <button onClick={()=>setModal("tx")} style={{ ...btn("#111827","#d4f04e"), padding:"10px 24px" }}>+ Add Transaction</button>
+              </div>
+            )}
             {data.transactions.map(t => {
               const c = getCat(t.category);
               return (
                 <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:"1px solid #f3f4f6" }}>
                   <span style={{ background:"#f3f4f6", width:36, height:36, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{c.icon}</span>
-                  <div style={{ flex:1 }}>
-                    <p style={{ margin:0, fontWeight:600, fontSize:14 }}>{t.name}</p>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ margin:0, fontWeight:600, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.name}</p>
                     <p style={{ margin:0, fontSize:12, color:"#9ca3af" }}>{t.category} · {new Date(t.date).toLocaleDateString("en-PK",{day:"numeric",month:"short"})}</p>
                   </div>
-                  <p style={{ margin:0, fontWeight:700, fontSize:14, color:t.type==="income"?"#16a34a":"#374151" }}>{t.type==="income"?"+":"−"}{fmt(t.amount)}</p>
-                  <button onClick={()=>deleteTx(t.id)} style={{ background:"none", border:"none", cursor:"pointer", color:"#d1d5db", fontSize:14, padding:"0 2px", fontFamily:"inherit" }}>✕</button>
+                  <p style={{ margin:0, fontWeight:700, fontSize:14, color:t.type==="income"?"#16a34a":"#374151", flexShrink:0 }}>{t.type==="income"?"+":"−"}{fmt(t.amount)}</p>
+                  <button onClick={()=>deleteTx(t.id)} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#9ca3af", fontSize:13, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0 }}>✕</button>
                 </div>
               );
             })}
@@ -525,21 +649,30 @@ export default function App() {
               <button onClick={()=>setModal("pay")} style={btn("#111827","#d4f04e")}>+ Add</button>
             </div>
             <div style={{ display:"grid", gap:10 }}>
+              {!data.upcomingPayments.length && (
+                <div style={{ ...card, textAlign:"center", padding:"40px 20px" }}>
+                  <p style={{ fontSize:28, margin:"0 0 8px" }}>📅</p>
+                  <p style={{ fontWeight:600, color:"#374151", margin:"0 0 4px" }}>No payment reminders</p>
+                  <p style={{ color:"#9ca3af", fontSize:13, margin:"0 0 16px" }}>Add bills and due dates so you never miss a payment</p>
+                  <button onClick={()=>setModal("pay")} style={{ ...btn("#111827","#d4f04e"), padding:"10px 24px" }}>+ Add Reminder</button>
+                </div>
+              )}
               {data.upcomingPayments.map(p => {
                 const days = daysUntil(p.dueDate);
                 const c = getCat(p.category);
                 const urgent = !p.paid && days <= 3;
                 return (
-                  <div key={p.id} style={{ ...card, display:"flex", alignItems:"center", gap:12, padding:"14px 18px", borderLeft:`3px solid ${p.paid?"#e5e7eb":urgent?"#ef4444":"#d4f04e"}` }}>
-                    <span style={{ background:"#f3f4f6", width:38, height:38, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0, opacity:p.paid?0.4:1 }}>{c.icon}</span>
-                    <div style={{ flex:1 }}>
-                      <p style={{ margin:0, fontWeight:600, fontSize:14, color:p.paid?"#9ca3af":"#111827", textDecoration:p.paid?"line-through":"none" }}>{p.name}</p>
+                  <div key={p.id} style={{ ...card, display:"flex", alignItems:"center", gap:10, padding:"14px 16px", borderLeft:`3px solid ${p.paid?"#e5e7eb":urgent?"#ef4444":"#d4f04e"}` }}>
+                    <span style={{ background:"#f3f4f6", width:36, height:36, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0, opacity:p.paid?0.4:1 }}>{c.icon}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ margin:0, fontWeight:600, fontSize:14, color:p.paid?"#9ca3af":"#111827", textDecoration:p.paid?"line-through":"none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</p>
                       <p style={{ margin:0, fontSize:12, color:p.paid?"#9ca3af":urgent?"#ef4444":"#9ca3af" }}>
                         {p.paid?"Paid":days<=0?"Due today":days<0?`${Math.abs(days)}d overdue`:`Due in ${days}d · ${new Date(p.dueDate).toLocaleDateString("en-PK",{day:"numeric",month:"short"})}`}
                       </p>
                     </div>
-                    <span style={{ fontWeight:700, fontSize:15, color:p.paid?"#9ca3af":"#111827", marginRight:8 }}>{fmt(p.amount)}</span>
-                    {!p.paid && <button onClick={()=>markPaid(p.id)} style={{ ...btn("#f3f4f6","#374151"), padding:"6px 12px", fontSize:12 }}>Paid ✓</button>}
+                    <span style={{ fontWeight:700, fontSize:14, color:p.paid?"#9ca3af":"#111827", flexShrink:0 }}>{fmt(p.amount)}</span>
+                    {!p.paid && <button onClick={()=>markPaid(p.id)} style={{ ...btn("#f3f4f6","#374151"), padding:"6px 10px", fontSize:12, flexShrink:0 }}>✓</button>}
+                    <button onClick={()=>setData(d=>({...d,upcomingPayments:d.upcomingPayments.filter(x=>x.id!==p.id)}))} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#9ca3af", fontSize:13, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0 }}>✕</button>
                   </div>
                 );
               })}
@@ -554,7 +687,7 @@ export default function App() {
               <p style={{ margin:0, fontWeight:700, fontSize:14 }}>Borrow & Lend</p>
               <button onClick={()=>setModal("lending")} style={btn("#111827","#d4f04e")}>+ New Entry</button>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap:10, marginBottom:16 }}>
               {[{label:"You're Owed",val:fmt(totalLent)},{label:"You Owe",val:fmt(totalBorrowed)},{label:"Net",val:(totalLent-totalBorrowed<0?"−":"+")+fmt(Math.abs(totalLent-totalBorrowed))}].map(s=>(
                 <div key={s.label} style={{ background:"#f9fafb", borderRadius:12, padding:"14px 16px", border:"1px solid #e5e7eb" }}>
                   <p style={{ margin:"0 0 4px", fontSize:11, color:"#9ca3af", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
@@ -568,7 +701,14 @@ export default function App() {
               ))}
             </div>
             <div style={{ display:"grid", gap:10 }}>
-              {!filteredLendings.length && <div style={{ ...card, textAlign:"center", padding:"40px", color:"#9ca3af", fontSize:14 }}>No entries yet</div>}
+              {!filteredLendings.length && (
+              <div style={{ ...card, textAlign:"center", padding:"40px 20px" }}>
+                <p style={{ fontSize:28, margin:"0 0 8px" }}>🤝</p>
+                <p style={{ fontWeight:600, color:"#374151", margin:"0 0 4px" }}>No entries yet</p>
+                <p style={{ color:"#9ca3af", fontSize:13, margin:"0 0 16px" }}>Track money you lent or borrowed</p>
+                <button onClick={()=>setModal("lending")} style={{ ...btn("#111827","#d4f04e"), padding:"10px 24px" }}>+ New Entry</button>
+              </div>
+            )}
               {filteredLendings.map(l => {
                 const isLent = l.type === "lent";
                 return (
@@ -610,7 +750,7 @@ export default function App() {
                 return s + (k.received||[]).filter(r=>r.stillOwes).reduce((ss,r)=>ss+Math.max(0,r.amount-paid),0);
               }, 0);
               return (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
+                <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap:10, marginBottom:16 }}>
                   {[{label:"Monthly Due",val:fmt(totalMonthlyDue)},{label:"Total Received",val:fmt(totalReceived)},{label:"Still Owe Back",val:fmt(totalStillOwed)}].map(s=>(
                     <div key={s.label} style={{ background:"#f9fafb", borderRadius:12, padding:"14px 16px", border:"1px solid #e5e7eb" }}>
                       <p style={{ margin:"0 0 4px", fontSize:11, color:"#9ca3af", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
@@ -635,7 +775,7 @@ export default function App() {
 
         {/* ── SAVINGS ── */}
         {tab === "savings" && (
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:14 }}>
             <div style={{ ...card, gridColumn:"1 / -1", background:"#111827", padding:"32px 28px" }}>
               <p style={{ color:"#6b7280", fontSize:11, fontWeight:600, margin:"0 0 6px", textTransform:"uppercase", letterSpacing:"1px" }}>Total Savings</p>
               <p style={{ color:"#d4f04e", fontSize:48, fontWeight:700, margin:"0 0 20px", letterSpacing:"-1px", lineHeight:1 }}>{fmt(data.savings)}</p>
@@ -666,7 +806,7 @@ export default function App() {
             </div>
             <div style={{ ...card, gridColumn:"1 / -1" }}>
               <p style={{ margin:"0 0 14px", fontWeight:700, fontSize:14 }}>Monthly Summary</p>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14 }}>
+              <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3,1fr)", gap:10, marginBottom:14 }}>
                 {[
                   {label:"Income",val:fmt(totalIncome)},
                   {label:"Expenses",val:fmt(totalExpenses)},
@@ -858,7 +998,94 @@ export default function App() {
         </Modal>
       )}
 
-      <style>{`* { box-sizing: border-box; } input[type=date]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }`}</style>
+
+      {/* Modal: Export Report */}
+      {modal === "export" && (
+        <Modal title="Export Report" onClose={()=>setModal(null)}>
+          <p style={{ margin:"0 0 16px", fontSize:13, color:"#6b7280" }}>Choose a date range and what to include. The report downloads as an HTML file you can open, print, or save as PDF.</p>
+
+          {/* Date range */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+            <div>
+              <Label>From</Label>
+              <input type="date" value={exportOpts.from} onChange={e=>setExportOpts(d=>({...d,from:e.target.value}))} style={{...inputSt,marginBottom:0}} />
+            </div>
+            <div>
+              <Label>To</Label>
+              <input type="date" value={exportOpts.to} onChange={e=>setExportOpts(d=>({...d,to:e.target.value}))} style={{...inputSt,marginBottom:0}} />
+            </div>
+          </div>
+
+          {/* Quick date presets */}
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
+            {[
+              ["This Month", () => { const n=new Date(); setExportOpts(d=>({...d,from:new Date(n.getFullYear(),n.getMonth(),1).toISOString().split("T")[0],to:new Date().toISOString().split("T")[0]})); }],
+              ["Last Month", () => { const n=new Date(); const f=new Date(n.getFullYear(),n.getMonth()-1,1); const t=new Date(n.getFullYear(),n.getMonth(),0); setExportOpts(d=>({...d,from:f.toISOString().split("T")[0],to:t.toISOString().split("T")[0]})); }],
+              ["Last 3 Months", () => { const n=new Date(); const f=new Date(n); f.setMonth(f.getMonth()-3); setExportOpts(d=>({...d,from:f.toISOString().split("T")[0],to:new Date().toISOString().split("T")[0]})); }],
+              ["This Year", () => { const n=new Date(); setExportOpts(d=>({...d,from:new Date(n.getFullYear(),0,1).toISOString().split("T")[0],to:new Date().toISOString().split("T")[0]})); }],
+            ].map(([label, fn]) => (
+              <button key={label} onClick={fn} style={{ ...btn("#f3f4f6","#374151"), padding:"5px 12px", fontSize:12 }}>{label}</button>
+            ))}
+          </div>
+
+          {/* Section toggles */}
+          <p style={{ margin:"0 0 10px", fontSize:12, fontWeight:700, color:"#374151", textTransform:"uppercase", letterSpacing:"0.5px" }}>Include in Report</p>
+          <div style={{ display:"grid", gap:8, marginBottom:20 }}>
+            {[
+              ["transactions", "💸 Transactions"],
+              ["payments",     "📅 Payment Reminders"],
+              ["lendings",     "🤝 Borrow & Lend"],
+              ["kameeti",      "🔄 Kameeti Circles"],
+              ["savings",      "🏦 Savings"],
+            ].map(([key, label]) => (
+              <div key={key} onClick={()=>setExportOpts(d=>({...d,sections:{...d.sections,[key]:!d.sections[key]}}))}
+                style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background: exportOpts.sections[key] ? "#f0fdf4" : "#f9fafb", border:`1px solid ${exportOpts.sections[key]?"#bbf7d0":"#e5e7eb"}`, borderRadius:10, padding:"12px 14px", cursor:"pointer" }}>
+                <span style={{ fontSize:14, fontWeight:500, color:"#111827" }}>{label}</span>
+                <div style={{ width:20, height:20, borderRadius:6, background: exportOpts.sections[key] ? "#111827" : "#e5e7eb", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {exportOpts.sections[key] && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d4f04e" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={generateReport} style={{ ...btn("#111827","#d4f04e"), width:"100%", padding:13, fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Report
+          </button>
+          <p style={{ margin:"10px 0 0", fontSize:11, color:"#9ca3af", textAlign:"center" }}>Opens as HTML — use your browser's Print to save as PDF</p>
+        </Modal>
+      )}
+
+      {/* Mobile bottom nav */}
+      <div className="mobile-nav" style={{ display:"none", position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"1px solid #e5e7eb", zIndex:50, padding:"6px 0 10px" }}>
+        {[
+          ["overview",     "Overview",     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>],
+          ["transactions", "Txns",         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>],
+          ["payments",     "Bills",        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>],
+          ["lendings",     "Lend",         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>],
+          ["kameeti",      "Kameeti",      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>],
+          ["savings",      "Savings",      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.8 2.7-2 2.7-4.5 0-1.5-.3-2.5-.7-3.5"/><path d="M9 12c0 0 1-1.5 3-1.5s3 1.5 3 1.5"/></svg>],
+        ].map(([id, label, icon]) => (
+          <button key={id} onClick={() => setTab(id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, background:"none", border:"none", cursor:"pointer", color: tab===id ? "#111827" : "#9ca3af", fontFamily:"inherit", padding:"4px 2px", position:"relative" }}>
+            <span style={{ color: tab===id ? "#111827" : "#9ca3af" }}>{icon}</span>
+            <span style={{ fontSize:10, fontWeight: tab===id ? 700 : 500 }}>{label}</span>
+            {id==="lendings" && unsettled>0 && <span style={{ position:"absolute", top:2, right:"20%", background:"#374151", color:"#fff", borderRadius:"50%", width:14, height:14, fontSize:9, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>{unsettled}</span>}
+            {id==="kameeti"  && kDue>0      && <span style={{ position:"absolute", top:2, right:"20%", background:"#d4f04e", color:"#111827", borderRadius:"50%", width:14, height:14, fontSize:9, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>{kDue}</span>}
+          </button>
+        ))}
+      </div>
+      <style>{`
+        * { box-sizing: border-box; }
+        input[type=date]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }
+        @media (max-width: 640px) {
+          .mobile-nav { display: flex !important; }
+          .desktop-tabs { display: none !important; }
+        }
+        @media (min-width: 641px) {
+          .mobile-nav { display: none !important; }
+          .desktop-tabs { display: flex !important; }
+        }
+      `}</style>
     </div>
   );
 }
