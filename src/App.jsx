@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const STORAGE_KEY = "finance_dashboard_v8";
+const STORAGE_KEY = "finance_dashboard_v9";
 
 const DEFAULT_CATEGORIES = [
   { name: "Housing",       icon: "🏠" },
@@ -197,6 +197,7 @@ export default function App() {
   const [newLend, setNewLend] = useState({ person: "", amount: "", type: "lent", date: new Date().toISOString().split("T")[0], note: "" });
   const [newK,    setNewK]    = useState({ name: "", monthlyAmount: "", totalMonths: "", startDate: new Date().toISOString().split("T")[0], myTurn: "" });
   const [newCat,  setNewCat]  = useState({ name: "", icon: "" });
+  const [editItem, setEditItem] = useState(null); // { type: "tx"|"pay"|"lend"|"kameeti", data: {...} }
   const [exportOpts, setExportOpts] = useState({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0],
     to:   new Date().toISOString().split("T")[0],
@@ -222,7 +223,8 @@ export default function App() {
   const fmt       = n => "₨" + Math.abs(Math.round(n)).toLocaleString();
   const getCat    = name => cats.find(c => c.name === name) || { name: "Other", icon: "📦" };
 
-  const totalIncome   = data.transactions.filter(t => t.type === "income").reduce((s,t) => s + t.amount, 0);
+  const txIncome      = data.transactions.filter(t => t.type === "income").reduce((s,t) => s + t.amount, 0);
+  const totalIncome   = txIncome + (+profile.monthlyIncome || 0);
   const totalExpenses = data.transactions.filter(t => t.type === "expense").reduce((s,t) => s + t.amount, 0);
   const balance       = totalIncome - totalExpenses;
   const pendingBills  = data.upcomingPayments.filter(p => !p.paid).reduce((s,p) => s + p.amount, 0);
@@ -368,6 +370,26 @@ export default function App() {
     URL.revokeObjectURL(url);
     setModal(null);
     notify("Report downloaded!");
+  };
+
+  const saveEdit = () => {
+    if (!editItem) return;
+    const { type, data: d } = editItem;
+    if (type === "tx") {
+      if (!d.name || !d.amount) return;
+      setData(prev => ({ ...prev, transactions: prev.transactions.map(t => t.id === d.id ? { ...d, amount: +d.amount } : t) }));
+    } else if (type === "pay") {
+      if (!d.name || !d.amount) return;
+      setData(prev => ({ ...prev, upcomingPayments: prev.upcomingPayments.map(p => p.id === d.id ? { ...d, amount: +d.amount } : p) }));
+    } else if (type === "lend") {
+      if (!d.person || !d.amount) return;
+      setData(prev => ({ ...prev, lendings: prev.lendings.map(l => l.id === d.id ? { ...d, amount: +d.amount } : l) }));
+    } else if (type === "kameeti") {
+      if (!d.name || !d.monthlyAmount) return;
+      setData(prev => ({ ...prev, kameetis: prev.kameetis.map(k => k.id === d.id ? { ...d, monthlyAmount: +d.monthlyAmount, totalMonths: +d.totalMonths, myTurn: +d.myTurn } : k) }));
+    }
+    setEditItem(null);
+    notify("Saved!");
   };
 
   const notify = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -650,6 +672,7 @@ export default function App() {
                     <p style={{ margin:0, fontSize:12, color:"#9ca3af" }}>{t.category} · {new Date(t.date).toLocaleDateString("en-PK",{day:"numeric",month:"short"})}</p>
                   </div>
                   <p style={{ margin:0, fontWeight:700, fontSize:14, color:t.type==="income"?"#16a34a":"#374151", flexShrink:0 }}>{t.type==="income"?"+":"−"}{fmt(t.amount)}</p>
+                  <button onClick={()=>setEditItem({ type:"tx", data:{...t} })} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#6b7280", fontSize:11, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0, fontWeight:600 }}>Edit</button>
                   <button onClick={()=>deleteTx(t.id)} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#9ca3af", fontSize:13, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0 }}>✕</button>
                 </div>
               );
@@ -688,6 +711,7 @@ export default function App() {
                     </div>
                     <span style={{ fontWeight:700, fontSize:14, color:p.paid?"#9ca3af":"#111827", flexShrink:0 }}>{fmt(p.amount)}</span>
                     {!p.paid && <button onClick={()=>markPaid(p.id)} style={{ ...btn("#f3f4f6","#374151"), padding:"6px 10px", fontSize:12, flexShrink:0 }}>✓</button>}
+                    <button onClick={()=>setEditItem({ type:"pay", data:{...p} })} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#6b7280", fontSize:11, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0, fontWeight:600 }}>Edit</button>
                     <button onClick={()=>setData(d=>({...d,upcomingPayments:d.upcomingPayments.filter(x=>x.id!==p.id)}))} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#9ca3af", fontSize:13, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0 }}>✕</button>
                   </div>
                 );
@@ -739,8 +763,9 @@ export default function App() {
                       <p style={{ margin:"2px 0 0", fontSize:12, color:"#9ca3af" }}>{new Date(l.date).toLocaleDateString("en-PK",{day:"numeric",month:"short",year:"numeric"})}{l.note&&` · ${l.note}`}</p>
                     </div>
                     <span style={{ fontWeight:700, fontSize:15, color:l.settled?"#9ca3af":"#111827", marginRight:6 }}>{isLent?"+":"−"}{fmt(l.amount)}</span>
-                    {!l.settled && <button onClick={()=>settleLend(l.id)} style={{ ...btn("#f3f4f6","#374151"), padding:"6px 12px", fontSize:12 }}>Settle</button>}
-                    <button onClick={()=>deleteLend(l.id)} style={{ background:"none", border:"none", cursor:"pointer", color:"#d1d5db", fontSize:14, padding:"0 2px", fontFamily:"inherit" }}>✕</button>
+                    {!l.settled && <button onClick={()=>settleLend(l.id)} style={{ ...btn("#f3f4f6","#374151"), padding:"6px 10px", fontSize:12 }}>Settle</button>}
+                    <button onClick={()=>setEditItem({ type:"lend", data:{...l} })} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#6b7280", fontSize:11, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0, fontWeight:600 }}>Edit</button>
+                    <button onClick={()=>deleteLend(l.id)} style={{ background:"#f3f4f6", border:"none", cursor:"pointer", color:"#9ca3af", fontSize:13, padding:"6px 8px", fontFamily:"inherit", borderRadius:8, flexShrink:0 }}>✕</button>
                   </div>
                 );
               })}
@@ -1024,6 +1049,68 @@ export default function App() {
         </Modal>
       )}
 
+
+      {/* Modal: Edit Entry */}
+      {editItem && (
+        <Modal title={editItem.type==="tx"?"Edit Transaction":editItem.type==="pay"?"Edit Payment":editItem.type==="lend"?"Edit Borrow/Lend":"Edit Kameeti"} onClose={()=>setEditItem(null)}>
+          {editItem.type === "tx" && <>
+            <Label>Description</Label>
+            <input value={editItem.data.name} onChange={e=>setEditItem(d=>({...d,data:{...d.data,name:e.target.value}}))} style={inputSt} />
+            <Label>Amount (₨)</Label>
+            <input type="number" value={editItem.data.amount} onChange={e=>setEditItem(d=>({...d,data:{...d.data,amount:e.target.value}}))} style={inputSt} />
+            <Label>Type</Label>
+            <select value={editItem.data.type} onChange={e=>setEditItem(d=>({...d,data:{...d.data,type:e.target.value}}))} style={inputSt}>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+            <Label>Category</Label>
+            <CatSelect value={editItem.data.category} onChange={e=>setEditItem(d=>({...d,data:{...d.data,category:e.target.value}}))} />
+            <Label>Date</Label>
+            <input type="date" value={editItem.data.date} onChange={e=>setEditItem(d=>({...d,data:{...d.data,date:e.target.value}}))} style={inputSt} />
+          </>}
+          {editItem.type === "pay" && <>
+            <Label>Payment Name</Label>
+            <input value={editItem.data.name} onChange={e=>setEditItem(d=>({...d,data:{...d.data,name:e.target.value}}))} style={inputSt} />
+            <Label>Amount (₨)</Label>
+            <input type="number" value={editItem.data.amount} onChange={e=>setEditItem(d=>({...d,data:{...d.data,amount:e.target.value}}))} style={inputSt} />
+            <Label>Due Date</Label>
+            <input type="date" value={editItem.data.dueDate} onChange={e=>setEditItem(d=>({...d,data:{...d.data,dueDate:e.target.value}}))} style={inputSt} />
+            <Label>Category</Label>
+            <CatSelect value={editItem.data.category} onChange={e=>setEditItem(d=>({...d,data:{...d.data,category:e.target.value}}))} />
+          </>}
+          {editItem.type === "lend" && <>
+            <Label>Person</Label>
+            <input value={editItem.data.person} onChange={e=>setEditItem(d=>({...d,data:{...d.data,person:e.target.value}}))} style={inputSt} />
+            <Label>Amount (₨)</Label>
+            <input type="number" value={editItem.data.amount} onChange={e=>setEditItem(d=>({...d,data:{...d.data,amount:e.target.value}}))} style={inputSt} />
+            <Label>Type</Label>
+            <select value={editItem.data.type} onChange={e=>setEditItem(d=>({...d,data:{...d.data,type:e.target.value}}))} style={inputSt}>
+              <option value="lent">I Lent</option>
+              <option value="borrowed">I Borrowed</option>
+            </select>
+            <Label>Date</Label>
+            <input type="date" value={editItem.data.date} onChange={e=>setEditItem(d=>({...d,data:{...d.data,date:e.target.value}}))} style={inputSt} />
+            <Label>Note</Label>
+            <input value={editItem.data.note||""} onChange={e=>setEditItem(d=>({...d,data:{...d.data,note:e.target.value}}))} style={inputSt} />
+          </>}
+          {editItem.type === "kameeti" && <>
+            <Label>Committee Name</Label>
+            <input value={editItem.data.name} onChange={e=>setEditItem(d=>({...d,data:{...d.data,name:e.target.value}}))} style={inputSt} />
+            <Label>Monthly Contribution (₨)</Label>
+            <input type="number" value={editItem.data.monthlyAmount} onChange={e=>setEditItem(d=>({...d,data:{...d.data,monthlyAmount:e.target.value}}))} style={inputSt} />
+            <Label>Total Months</Label>
+            <input type="number" value={editItem.data.totalMonths} onChange={e=>setEditItem(d=>({...d,data:{...d.data,totalMonths:e.target.value}}))} style={inputSt} />
+            <Label>Start Date</Label>
+            <input type="date" value={editItem.data.startDate} onChange={e=>setEditItem(d=>({...d,data:{...d.data,startDate:e.target.value}}))} style={inputSt} />
+            <Label>My Turn (which month I receive)</Label>
+            <input type="number" value={editItem.data.myTurn} onChange={e=>setEditItem(d=>({...d,data:{...d.data,myTurn:e.target.value}}))} style={inputSt} />
+          </>}
+          <div style={{ display:"flex", gap:8, marginTop:4 }}>
+            <button onClick={saveEdit} style={{ ...btn("#111827","#d4f04e"), flex:1, padding:12, fontSize:14 }}>Save Changes</button>
+            <button onClick={()=>setEditItem(null)} style={{ ...btn("#f3f4f6","#374151"), flex:1, padding:12, fontSize:14 }}>Cancel</button>
+          </div>
+        </Modal>
+      )}
 
       {/* Modal: Export Report */}
       {modal === "export" && (
