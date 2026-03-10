@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const STORAGE_KEY = "finance_dashboard_v7";
+const STORAGE_KEY = "finance_dashboard_v8";
 
 const DEFAULT_CATEGORIES = [
   { name: "Housing",       icon: "🏠" },
@@ -363,7 +363,7 @@ export default function App() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-   a.download = "mera-paisa-report-" + from + "-to-" + to + ".html";
+    a.download = "mera-paisa-report-" + from + "-to-" + to + ".html";
     a.click();
     URL.revokeObjectURL(url);
     setModal(null);
@@ -488,24 +488,15 @@ export default function App() {
             </button>
             {/* divider */}
             <div style={{ width: 1, height: 24, background: "#e5e7eb", margin: "0 2px" }} />
-            {/* Settings icon — gear SVG */}
+            {/* Settings icon */}
             <button onClick={() => setModal("settings")} title="Settings"
-              style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
+              style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+              ⚙️
             </button>
-            {/* Profile icon — person SVG with initial on hover */}
+            {/* Profile icon */}
             <button onClick={() => { setProfileDraft({...profile}); setModal("profile"); }} title="Profile"
-              style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {profile.name
-                ? <span style={{ fontWeight: 700, fontSize: 13, color: "#111827" }}>{profile.name.trim()[0].toUpperCase()}</span>
-                : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-              }
+              style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid #e5e7eb", background: profile.name ? "#d4f04e" : "#f9fafb", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: profile.name ? 14 : 16, fontWeight: 700, color: "#111827" }}>
+              {profile.name ? profile.name.trim()[0].toUpperCase() : "👤"}
             </button>
           </div>
         </div>
@@ -545,6 +536,31 @@ export default function App() {
         {/* ── OVERVIEW ── */}
         {tab === "overview" && (
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+            {profile.monthlyIncome && (
+              <div style={{ ...card, gridColumn: "1 / -1", background: "#111827", color: "#fff" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:14, color:"#fff" }}>Monthly Budget</p>
+                  <span style={{ fontSize:12, color:"#6b7280" }}>Salary: {fmt(+profile.monthlyIncome)}</span>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap:10 }}>
+                  {[
+                    { label:"Spent",       val: totalExpenses,                          color:"#e5e7eb", pct: Math.min(100,(totalExpenses/+profile.monthlyIncome)*100) },
+                    { label:"Remaining",   val: Math.max(0,+profile.monthlyIncome - totalExpenses), color:"#d4f04e", pct: Math.min(100,Math.max(0,(+profile.monthlyIncome-totalExpenses)/+profile.monthlyIncome)*100) },
+                    { label:"Pending Bills", val: pendingBills,                         color:"#fbbf24", pct: Math.min(100,(pendingBills/+profile.monthlyIncome)*100) },
+                    { label:"After Bills", val: Math.max(0,+profile.monthlyIncome - totalExpenses - pendingBills), color:"#86efac", pct: Math.min(100,Math.max(0,(+profile.monthlyIncome-totalExpenses-pendingBills)/+profile.monthlyIncome)*100) },
+                  ].map(s => (
+                    <div key={s.label}>
+                      <p style={{ margin:"0 0 4px", fontSize:11, color:"#6b7280", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
+                      <p style={{ margin:"0 0 6px", fontWeight:700, fontSize:15, color:s.color }}>{fmt(s.val)}</p>
+                      <div style={{ background:"#374151", borderRadius:4, height:4 }}>
+                        <div style={{ width:`${s.pct}%`, height:"100%", borderRadius:4, background:s.color }} />
+                      </div>
+                      <p style={{ margin:"3px 0 0", fontSize:10, color:"#6b7280" }}>{s.pct.toFixed(0)}%</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={card}>
               <p style={{ margin: "0 0 16px", fontWeight: 700, fontSize: 14 }}>Spending Breakdown</p>
               {Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).map(([cat, amt]) => {
@@ -875,7 +891,7 @@ export default function App() {
           </div>
           <Label>Your Name</Label>
           <input value={profileDraft.name} onChange={e=>setProfileDraft(d=>({...d,name:e.target.value}))} style={inputSt} placeholder="e.g. Ali Hassan" />
-          <Label>Monthly Income (₨)</Label>
+          <Label>Monthly Salary (₨)</Label>
           <input type="number" value={profileDraft.monthlyIncome} onChange={e=>setProfileDraft(d=>({...d,monthlyIncome:e.target.value}))} style={inputSt} placeholder="e.g. 150000" />
           <Label>Currency</Label>
           <select value={profileDraft.currency} onChange={e=>setProfileDraft(d=>({...d,currency:e.target.value}))} style={inputSt}>
@@ -887,10 +903,20 @@ export default function App() {
           </select>
           {profileDraft.monthlyIncome && (
             <div style={{ background:"#f9fafb", borderRadius:10, padding:"12px 14px", border:"1px solid #e5e7eb", marginBottom:12 }}>
-              <p style={{ margin:"0 0 2px", fontSize:12, color:"#9ca3af", fontWeight:600 }}>Savings rate based on your income</p>
-              <p style={{ margin:0, fontWeight:700, fontSize:15 }}>
-                {((data.savings / +profileDraft.monthlyIncome) * 100).toFixed(1)}% saved this month
-              </p>
+              <p style={{ margin:"0 0 6px", fontSize:12, color:"#9ca3af", fontWeight:600 }}>Budget Preview</p>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                {[
+                  { label:"Salary",    val: fmt(+profileDraft.monthlyIncome) },
+                  { label:"Spent",     val: fmt(totalExpenses) },
+                  { label:"Remaining", val: fmt(Math.max(0,+profileDraft.monthlyIncome - totalExpenses)) },
+                  { label:"Savings %", val: ((data.savings / +profileDraft.monthlyIncome)*100).toFixed(1)+"%" },
+                ].map(s => (
+                  <div key={s.label}>
+                    <p style={{ margin:0, fontSize:11, color:"#9ca3af" }}>{s.label}</p>
+                    <p style={{ margin:0, fontWeight:700, fontSize:14, color:"#111827" }}>{s.val}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <div style={{ display:"flex", gap:8, marginTop:4 }}>
